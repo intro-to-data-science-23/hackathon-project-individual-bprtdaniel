@@ -1,0 +1,121 @@
+---
+title: "hackathon_1.2"
+author: "Daniel Boppert"
+date: "2023-12-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(haven)
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r}
+survey <- as_factor(readRDS('survey/meof_usa_survey_df.RDS'))
+tracking <- readRDS('tracking/meof_usa_web_df.RDS')
+
+```
+Write a function that lets you illustrate the distribution of answers for a given discrete
+choice question (not: questions with open text) on each of the survey waves. The
+function should:
+
+• take the data frame and survey item as arguments.
+• return a small multiple barplot grouped at the survey wave-level with the answer
+option counts (including Nas as a separate category).
+• present the original survey question (label) and the variable name in the title of the
+plot, and the data source in a footnote below the plot.
+• graph the value labels in the answer tick axis (i.e., in presvote16post, you would
+want “Hillary Clinton”, “Donald Trump”, etc., rather than the numbers
+representing these values).
+• have an additional argument that lets the user determine whether absolute
+numbers (counts) or relative shares (in % of respondents) are reported.
+• stop if the input variable is not a labelled <dbl+lbl> type.
+
+Prove the correct behavior of the function with at least three survey questions,
+highlighting that the arguments work as intended on (and only on) valid variable
+types.
+
+```{r}
+
+
+plot_data <- survey %>%
+    group_by(wave, pid7) %>%
+    mutate(count = n()) %>% 
+    ungroup() %>%
+    select(wave, pid7,count) %>%
+    unique()
+
+ggplot(plot_data, aes(x = pid7, y = count, fil = wave)) +
+         geom_bar()
+
+
+
+
+
+
+
+
+party_lean <- function(survey_data, survey_question, relative = FALSE) {
+  
+  plot_data <- survey_data %>%
+    group_by(survey_data$wave, survey_question) %>%
+    mutate(count = n()) %>%
+    ungroup()
+  
+   if (relative) {
+    plot_data <- plot_data %>%
+      group_by(wave) %>%
+      mutate(relative_count = count / sum(count) * 100) %>%
+      ungroup()
+   }
+  
+  count_type <- if (relative) "relative_count" else "count"
+  
+  party_lean_plot <- ggplot(plot_data, aes(x = survey_question, y = count, fill = wave)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = paste("Survey Question:", survey_question),
+         x = "Answer Options",
+         y = ifelse(relative, "Percentage (%)", "Counts"),
+         caption = "Data source") +
+    facet_wrap(~ wave) 
+  
+  return(party_lean_plot)
+}  
+  
+
+party_lean(survey, pid7, relative = TRUE)
+
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
