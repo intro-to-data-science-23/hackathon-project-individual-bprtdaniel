@@ -13,6 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(haven)
 library(ggplot2)
 library(tidyverse)
+library(scales)
+library(sjlabelled)
 ```
 
 ```{r}
@@ -43,53 +45,311 @@ types.
 ```{r}
 
 
-plot_data <- survey %>%
-    group_by(wave, pid7) %>%
+ plot_outside <- survey %>%
+    group_by(wave) %>%
+    mutate(count = n_distinct(pid7)) %>%
+    ungroup() %>%
+    group_by(wave) %>%
+    mutate(relative_count = count / sum(count) * 100) %>%
+    ungroup()
+
+plot <- ggplot(plot_outside, aes(pid7, fill = wave)) +
+    geom_bar() +
+    facet_grid(~ wave)
+plot
+
+
+
+plot_outside <- survey %>%
+    # Group by 'wave' and 'pid7' and count the occurrences
+    group_by(wave, presvote16post) %>%
+    summarise(count = n()) %>%
+    # Group by 'wave' again to calculate relative counts
+    group_by(wave) %>%
+    # Calculate the relative count for each 'pid7' within each 'wave'
+    mutate(relative_count = count / sum(count) * 100)
+
+
+
+
+
+
+party_lean <- function(survey, variable, relative) {
+  
+  var_quo <- enquo(variable)
+  temp <- survey %>%
+    select(wave, any_of(!!var_quo)) %>%
+    rename(input = any_of(!!var_quo))
+
+  plot_data <- temp %>%
+    group_by(temp$wave, temp$input) %>%
     mutate(count = n()) %>% 
     ungroup() %>%
-    select(wave, pid7,count) %>%
+    group_by(temp$wave) %>%
+    mutate(relative_count = count / sum(count) * 100) %>%
+    ungroup() %>%
     unique()
-
-ggplot(plot_data, aes(x = pid7, y = count, fil = wave)) +
-         geom_bar()
-
-
-
-
-
-
-
-
-party_lean <- function(survey_data, survey_question, relative = FALSE) {
-  
-  plot_data <- survey_data %>%
-    group_by(survey_data$wave, survey_question) %>%
-    mutate(count = n()) %>%
-    ungroup()
-  
-   if (relative) {
-    plot_data <- plot_data %>%
-      group_by(wave) %>%
-      mutate(relative_count = count / sum(count) * 100) %>%
-      ungroup()
-   }
-  
-  count_type <- if (relative) "relative_count" else "count"
-  
-  party_lean_plot <- ggplot(plot_data, aes(x = survey_question, y = count, fill = wave)) +
+ 
+  party_lean_plot <- ggplot(plot_data, aes(variable, ifelse(relative, relative_count, count), fill = factor(wave))) +
     geom_bar(stat = "identity") +
     theme_minimal() +
-    labs(title = paste("Survey Question:", survey_question),
+    labs(title = paste("Survey Question:", variable),
          x = "Answer Options",
          y = ifelse(relative, "Percentage (%)", "Counts"),
          caption = "Data source") +
     facet_wrap(~ wave) 
-  
-  return(party_lean_plot)
-}  
-  
+ return(party_lean_plot)
+}
 
-party_lean(survey, pid7, relative = TRUE)
+variable <- survey$pid7
+party_lean(survey, variable, relative = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+party_lean <- function(survey, variable, relative) {
+  
+ data_prepared <- survey %>%
+    mutate(wave = as.factor(wave),
+           Response = factor(ifelse(is.na(.data[[variable]]), "NA", 
+                                   as.character(haven::as_factor(.data[[variable]]))))) %>%
+    group_by(wave, Response) %>%
+    summarise(Count = n(), .groups = 'drop')
+
+  # Calculate percentages if required
+  if (relative) {
+    data_prepared <- data_prepared %>%
+      group_by(wave) %>%
+      mutate(Percent = Count / sum(Count) * 100)
+  }
+
+  # Create the plot
+  party_lean_plot <- ggplot(data_prepared, aes(x = Response, y = ifelse(relative, Percent, Count), fill = Response)) +
+    geom_bar(stat = 'identity') +
+    facet_wrap(~ wave) +
+    labs(title = paste("Survey Question:", sjlabelled::get_labels(survey[[variable]]), "\nVariable:", variable),
+         x = "",
+         y = ifelse(relative, "Percentage", "Count"),
+         caption = "Data Source: [Your Data Source Here]") +
+    theme_minimal()
+
+  return(party_lean_plot)
+}
+
+variable <- survey$pid7
+party_lean(survey, variable, relative = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+library(forcats)
+library(haven)
+
+
+plot_survey_data <- function(data, variable, percentage = FALSE) {
+  # Ensure that 'variable' is a single string
+  if (!is.character(variable) || length(variable) != 1) {
+    stop("Variable must be a single variable name (a string).")
+  }
+
+  # Check if variable exists in the dataframe
+  if (!variable %in% names(data)) {
+    stop("Variable not found in the data frame.")
+  }
+
+  # Check if variable is a labelled <dbl+lbl> type
+  if (!inherits(data[[variable]], 'labelled')) {
+    stop("Input variable is not a labelled <dbl+lbl> type")
+  }
+
+  # Prepare the data
+  data_prepared <- data %>%
+    mutate(Wave = as.factor(Wave),
+           Response = factor(ifelse(is.na(data[[variable]]), "NA", 
+                                   as.character(haven::as_factor(data[[variable]]))))) %>%
+    group_by(Wave, Response) %>%
+    summarise(Count = n(), .groups = 'drop')
+
+  # Calculate percentages if required
+  if (percentage) {
+    data_prepared <- data_prepared %>%
+      group_by(Wave) %>%
+      mutate(Percent = Count / sum(Count) * 100)
+  }
+
+  # Create the plot
+  plot <- ggplot(data_prepared, aes(x = Response, y = ifelse(percentage, Percent, Count), fill = Response)) +
+    geom_bar(stat = 'identity') +
+    facet_wrap(~ Wave) +
+    labs(title = paste("Survey Question:", haven::get_label(data[[variable]]), "\nVariable:", variable),
+         x = "",
+         y = ifelse(percentage, "Percentage", "Count"),
+         caption = "Data Source: [Your Data Source Here]") +
+    theme_minimal()
+
+  return(plot)
+}
+
+plot_survey_data(survey, "presvote16post", percentage = FALSE)
+
+
+
+
+
+
+library(dplyr)
+library(ggplot2)
+library(rlang)
+library(forcats)
+
+library(dplyr)
+library(ggplot2)
+
+create_facet_plot <- function(survey_data, var_name, relative = FALSE) {
+  # Example: Retrieving question label and data source from survey_data attributes
+  # Adjust these lines as per your dataset's structure
+  question_label <- attr(survey_data, "question_labels")[var_name] 
+  data_source <- attr(survey_data, "data_source") 
+
+  # Convert NA to a factor level named "Missing"
+  survey_data[[var_name]] <- as.factor(survey_data[[var_name]])
+  survey_data[[var_name]][is.na(survey_data[[var_name]])] <- "Missing"
+
+  # Group by wave and var_name, and calculate counts
+  grouped_data <- survey_data %>%
+    group_by(wave, .data[[var_name]]) %>%
+    summarise(count = n(), .groups = 'drop')
+
+  # If relative is TRUE, calculate percentages
+  if (relative) {
+    grouped_data <- grouped_data %>%
+      group_by(wave) %>%
+      mutate(percentage = count / sum(count) * 100) %>%
+      ungroup()
+
+    # Create the plot with percentages and add labels
+    plot <- ggplot(grouped_data, aes(x = .data[[var_name]], y = percentage, fill = wave)) +
+      geom_bar(stat = "identity") +
+      geom_text(aes(label = sprintf("%.1f%%", percentage)), vjust = -0.5, size = 3) +
+      facet_grid(~wave) +
+      theme_minimal() +
+      labs(title = paste(question_label, "(", var_name, ")"), 
+           y = "Percentage (%)", 
+           caption = data_source) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            plot.caption = element_text(hjust = 0))
+  } else {
+    # Create the plot with absolute counts
+    plot <- ggplot(grouped_data, aes(x = .data[[var_name]], y = count, fill = wave)) +
+      geom_bar(stat = "identity") +
+      facet_grid(~wave) +
+      theme_minimal() +
+      labs(title = paste(question_label, "(", var_name, ")"), 
+           y = "Count", 
+           caption = data_source) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            plot.caption = element_text(hjust = 0))
+  }
+
+  return(plot)
+}
+
+create_facet_plot(survey, "presvote16post", FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+create_facet_plot <- function(survey_data, var_name, relative = FALSE) {
+  # Convert the variable to factor for plotting
+  factor_var <- as_factor(survey_data[[var_name]])
+
+  # Convert NA in factor_var to "Missing"
+  factor_var <- factor(factor_var, levels = c(levels(factor_var), "Missing"))
+  factor_var[is.na(factor_var)] <- "Missing"
+
+  # Group by wave and original numeric var_name, and calculate counts
+  grouped_data <- survey_data %>%
+    group_by(wave, .data[[var_name]]) %>%
+    summarise(count = n(), .groups = 'drop')
+
+  # Create a data frame for mapping numbers to labels
+  label_mapping <- data.frame(Number = as.numeric(levels(factor_var)), Label = levels(factor_var))
+
+  # Join the factor labels for plotting
+  grouped_data <- grouped_data %>%
+    left_join(label_mapping, by = c(var_name = "Number"))
+
+  # Retrieve the question label and data source
+  question_label <- attr(survey_data, "question_labels")[var_name] 
+  data_source <- attr(survey_data, "data_source") 
+
+  # If relative is TRUE, calculate percentages
+  if (relative) {
+    grouped_data <- grouped_data %>%
+      group_by(wave) %>%
+      mutate(percentage = count / sum(count) * 100) %>%
+      ungroup()
+
+    # Create the plot with percentages
+    plot <- ggplot(grouped_data, aes(x = Label, y = percentage, fill = wave)) +
+      geom_bar(stat = "identity") +
+      geom_text(aes(label = sprintf("%.1f%%", percentage)), vjust = -0.5, size = 3) +
+      facet_grid(~wave) +
+      theme_minimal() +
+      labs(title = paste(question_label, "(", var_name, ")"), 
+           y = "Percentage (%)", 
+           caption = data_source) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            plot.caption = element_text(hjust = 0))
+  } else {
+    # Create the plot with absolute counts
+    plot <- ggplot(grouped_data, aes(x = Label, y = count, fill = wave)) +
+      geom_bar(stat = "identity") +
+      facet_grid(~wave) +
+      theme_minimal() +
+      labs(title = paste(question_label, "(", var_name, ")"), 
+           y = "Count", 
+           caption = data_source) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            plot.caption = element_text(hjust = 0))
+  }
+
+  return(plot)
+}
+
+
+var_name <- survey$presvote16post
+
+
+
+
 
 
 
