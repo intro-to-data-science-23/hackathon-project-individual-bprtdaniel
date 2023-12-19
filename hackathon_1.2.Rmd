@@ -18,7 +18,8 @@ library(sjlabelled)
 ```
 
 ```{r}
-survey <- as_factor(readRDS('survey/meof_usa_survey_df.RDS'))
+survey <- readRDS('survey/meof_usa_survey_df.RDS')
+survey <- haven::as_factor(survey)
 tracking <- readRDS('tracking/meof_usa_web_df.RDS')
 
 ```
@@ -225,13 +226,18 @@ library(dplyr)
 library(ggplot2)
 
 create_facet_plot <- function(survey_data, var_name, relative = FALSE) {
-  # Example: Retrieving question label and data source from survey_data attributes
-  # Adjust these lines as per your dataset's structure
+  # Check if the variable is of type 'labelled' and 'double'
+  if (!inherits(survey_data[[var_name]], c("labelled", "double"))) {
+    stop("The variable is not of type 'labelled <dbl+lbl>'. Function will stop.")
+  }
+
+  # Rest of your function code...
+  # Retrieving question label and data source from survey_data attributes
   question_label <- attr(survey_data, "question_labels")[var_name] 
   data_source <- attr(survey_data, "data_source") 
 
   # Convert NA to a factor level named "Missing"
-  survey_data[[var_name]] <- as.factor(survey_data[[var_name]])
+  survey_data[[var_name]] <- haven::as_factor(survey_data[[var_name]])
   survey_data[[var_name]][is.na(survey_data[[var_name]])] <- "Missing"
 
   # Group by wave and var_name, and calculate counts
